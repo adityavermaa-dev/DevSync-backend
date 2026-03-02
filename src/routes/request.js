@@ -11,7 +11,7 @@ requestRouter.post("/request/send/:status/:toUserId", userAuth, async (req, res)
         const fromUserId = req.user._id;
         const toUserId = req.params.toUserId;
         const status = req.params.status;
-        const toUserEmail = await User.findOne({_id : toUserId}) ;
+        const toUserEmail = await User.findOne({ _id: toUserId });
         const allowedStatus = ["interested", "ignored"];
 
         if (!allowedStatus.includes(status.toLowerCase())) {
@@ -42,15 +42,15 @@ requestRouter.post("/request/send/:status/:toUserId", userAuth, async (req, res)
         })
 
         await request.save();
-        
 
-        (async () => {
-            await sendMail(
-                toUserEmail,
-                "Plain text version",
-                `<h1>Welcome</h1>${req.user.firstName} Sent you connection request<p></p>`
-            );
-        })();
+
+        await sendMail(
+            toUserEmail,
+            "Connection Request",
+            `${req.user.firstName} sent you a connection request`,
+            `<h1>Welcome</h1>
+   <p>${req.user.firstName} sent you a connection request</p>`
+        );
         res.status(200).send("Connection request send successfully")
 
     } catch (error) {

@@ -5,28 +5,31 @@ const cloudinary = require("../config.js/cloudinary");
 const fs = require('fs');
 
 
-exports.uploadVideo = async(req,res) => {
+exports.uploadVideo = async (req, res) => {
     try {
         const file = req.file;
-        
-        const result = await cloudinary.uploader.upload(file.path,{
-            resource_type : "video",
-            folder : "reels"
+
+        const result = await cloudinary.uploader.upload(file.path, {
+            resource_type: "video",
+            folder: "reels",
+            cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+            api_key: process.env.CLOUDINARY_API_KEY,
+            api_secret: process.env.CLOUDINARY_API_SECRET
         })
 
         const video = await Video.create({
-            userId : req.user._id,
-            caption : req.body.caption,
-            videoUrl : result.secure_url,
-            thumbnail : result.secure_url.replace(".mp4",".jpg")
+            userId: req.user._id,
+            caption: req.body.caption,
+            videoUrl: result.secure_url,
+            thumbnail: result.secure_url.replace(".mp4", ".jpg")
         })
 
         fs.unlinkSync(file.path);
-        
+
         res.json(video);
 
     } catch (error) {
-        res.status(500).json({message: error.message});
+        res.status(500).json({ message: error.message });
     }
 }
 
@@ -123,7 +126,7 @@ exports.deleteVideo = async (req, res) => {
         }
 
         const video = await Video.findById(videoId);
-        
+
         if (!video) {
             return res.status(404).json({ message: "Video not found" });
         }

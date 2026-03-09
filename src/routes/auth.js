@@ -36,7 +36,7 @@ authRouter.post("/signup", async (req, res) => {
         const savedUser = await user.save();
 
         const verifyLink =
-            `${process.env.BACKEND_URL}/auth/verify-email/${verificationToken}`;
+            `${process.env.BACKEND_URL}/verify-email/${verificationToken}`;
 
         await sendEmail({
             to: savedUser.email,

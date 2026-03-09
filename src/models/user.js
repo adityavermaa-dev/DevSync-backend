@@ -68,7 +68,17 @@ const userSchema = new mongoose.Schema(
         verificationToken : {
             type : String,
         },
-        verificationTokenExpires : Date
+        verificationTokenExpires : Date,
+        passwordResetToken : String,
+        passwordResetTokenExpires : Date,
+
+        devices : [
+            {
+                device : String,
+                ip : String,
+                lastLogin : Date
+            }
+        ]
     },
     { timestamps: true }
 );

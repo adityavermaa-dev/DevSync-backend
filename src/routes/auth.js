@@ -7,6 +7,7 @@ const { OAuth2Client } = require("google-auth-library");
 const crypto = require("crypto");
 const axios = require("axios");
 const sendEmail = require("../services/emailService");
+const UAparser = require("ua-parser-js");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -39,7 +40,7 @@ authRouter.post("/signup", async (req, res) => {
 
         await sendEmail({
             to: savedUser.email,
-            subject: "Verify you DevSync account",
+            subject: "Verify your DevSync account",
             html:
                 `
             <h2>Welcome to DevSync, ${savedUser.firstName}</h2>
@@ -120,7 +121,7 @@ authRouter.post("/resend-verification", async (req, res) => {
 
     await sendEmail({
         to: user.email,
-        subject: "Verify you DevSync account",
+        subject: "Verify your DevSync account",
         html:
             `
             <h2>Welcome to DevSync, ${user.firstName}</h2>
@@ -160,6 +161,47 @@ authRouter.post("/login", async (req, res) => {
 
         const token = user.getJWT();
 
+        const ua = new UAparser(req.headers["user-agent"]);
+        const deviceInfo = ua.getResult();
+
+        const deviceName =
+            `${deviceInfo.browser.name || "Unknown"} on ${deviceInfo.os.name || "Unknown"}`;
+
+        const ip =
+            req.headers["x-forwarded-for"]?.split(",")[0] ||
+            req.socket.remoteAddress;
+        const existingDevice = user.devices.find(
+            d => d.device === deviceName
+        );
+
+        if (!existingDevice) {
+
+            user.devices.push({
+                device: deviceName,
+                ip,
+                lastLogin: new Date()
+            });
+
+            await user.save();
+
+            await sendEmail({
+                to: user.email,
+                subject: "New login detected on DevSync",
+                html: `
+    <h3>New Login Detected</h3>
+
+    <p>A new login to your DevSync account was detected.</p>
+
+    <b>Device:</b> ${deviceName} <br/>
+    <b>IP:</b> ${ip} <br/>
+    <b>Time:</b> ${new Date().toLocaleString()} <br/>
+
+    <p>If this wasn't you, please reset your password.</p>
+    `
+            });
+
+        }
+
         res
             .cookie("token", token, {
                 httpOnly: true,
@@ -179,6 +221,52 @@ authRouter.post("/login", async (req, res) => {
         res.status(500).json({ message: "Server error" });
     }
 });
+
+authRouter.post("/forgot-password", async (req, res) => {
+    const user = await User.findOne({ email: req.body.email.toLowerCase() });
+
+    if (!user) {
+        return res.json({ message: "If the account exists, a reset email has been sent" });
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    user.passwordResetToken = token
+    user.passwordResetTokenExpires = Date.now() + 3600000;
+
+    await user.save();
+
+    const resetLink =
+        `${process.env.BACKEND_URL}/auth/reset-password/${token}`;
+
+    await sendEmail({
+        to: user.email,
+        subject: "Reset your DevSync password",
+        html: `<a href="${resetLink}">Reset Password</a>`
+    });
+
+    res.json({ message: "Password reset email sent" });
+})
+
+authRouter.post("/reset-password/:token", async (req, res) => {
+    const user = await User.findOne({
+        passwordResetToken: req.params.token,
+        passwordResetTokenExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+        return res.status(403).json({ message: "Invalid or Expired Token" })
+    }
+
+    const hashed = await bcrypt.hash(req.body.password, 10);
+
+    user.password = hashed
+    user.passwordResetToken = undefined
+    user.passwordResetTokenExpires = undefined
+
+    await user.save()
+
+    res.json({ message: "Password reset successfully" })
+})
 
 authRouter.post("/auth/google/callback", async (req, res) => {
     try {
@@ -310,7 +398,7 @@ authRouter.get("/auth/github/callback", async (req, res) => {
 authRouter.post("/logout", (req, res) => {
     res.clearCookie("token");
 
-    res.send("Logut Successfully")
+    res.send("Logout Successfully")
 })
 
 module.exports = authRouter;

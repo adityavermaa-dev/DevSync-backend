@@ -56,6 +56,19 @@ const userSchema = new mongoose.Schema(
             type: String,
             enum: ["male", "female", "other"],
         },
+        isVerified : {
+            type : Boolean,
+            default : false
+        },
+        authProvider : {
+            type : String,
+            enum : ["local","google","github"],
+            default : "local"
+        },
+        verificationToken : {
+            type : String,
+        },
+        verificationTokenExpires : Date
     },
     { timestamps: true }
 );

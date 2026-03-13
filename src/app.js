@@ -3,6 +3,10 @@ const app = express()
 const cookieParser = require("cookie-parser")
 const cors = require("cors")
 const dotenv = require("dotenv")
+const http = require("http");
+
+const server = http.createServer(app);
+
 dotenv.config();
 app.use(express.json({ limit: '100mb' }))
 app.use(express.urlencoded({ limit: '100mb', extended: true }))
@@ -13,13 +17,16 @@ app.use(cors({
     credentials: true
 }))
 
+initializeSocket(server);
+
 const connectDb = require("./config.js/database")
 const authRouter = require("./routes/auth")
 const profileRouter = require("./routes/profile")
 const requestRouter = require("./routes/request")
 const userRouter = require("./routes/user")
 const videoRouter = require("./routes/videoRoutes")
-const paymentRouter = require('./routes/payment')
+const paymentRouter = require('./routes/payment');
+const initializeSocket = require("./config.js/socket");
 require("./utils/cronScheduleEmail");
 
 
@@ -33,7 +40,7 @@ app.use(videoRouter);
 connectDb()
     .then(() => {
         console.log("Database connection successful")
-        app.listen(process.env.PORT, () => {
+        server.listen(process.env.PORT, () => {
             console.log("Server listens");
         });
     })

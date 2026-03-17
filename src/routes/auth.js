@@ -236,7 +236,7 @@ authRouter.post("/forgot-password", async (req, res) => {
     await user.save();
 
     const resetLink =
-        `${process.env.BACKEND_URL}/reset-password/${token}`;
+        `${process.env.FRONTEND_URL}/reset-password/${token}`;
 
     await sendEmail({
         to: user.email,
@@ -245,6 +245,19 @@ authRouter.post("/forgot-password", async (req, res) => {
     });
 
     res.json({ message: "Password reset email sent" });
+})
+
+authRouter.get("/reset-password/:token", async (req, res) => {
+    const user = await User.findOne({
+        passwordResetToken: req.params.token,
+        passwordResetTokenExpires: { $gt: Date.now() }
+    });
+
+    if (!user) {
+        return res.redirect(`${process.env.FRONTEND_URL}/reset-password-invalid`);
+    }
+
+    return res.redirect(`${process.env.FRONTEND_URL}/reset-password/${req.params.token}`);
 })
 
 authRouter.post("/reset-password/:token", async (req, res) => {

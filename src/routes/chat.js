@@ -26,3 +26,13 @@ chatRouter.get("/chats/:targetUserId",userAuth,async(req,res) => {
         res.status(404).json({message : error.message})
     }
 })
+
+
+chatRouter.patch("/edit/message/:messageId",userAuth,(req,res) => {
+    try {
+        const messageId = req.params;
+        
+    } catch (error) {
+        
+    }
+})

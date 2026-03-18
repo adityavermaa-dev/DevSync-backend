@@ -9,9 +9,8 @@ const initializeSocket = (server) => {
     })
 
     io.on("connection", (socket) => {
-        socket.on("joinChat", ({ userId, targetUserId }) => {
-            const roomId = [userId, targetUserId].sort().join("A");
-            socket.join(roomId);
+        socket.on("joinChat", (chatId) => {
+            socket.join(chatId);
         })
         socket.on("sendMessage", async ({ firstName, userId, targetUserId, text }) => {
             try {

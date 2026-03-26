@@ -8,6 +8,7 @@ const crypto = require("crypto");
 const axios = require("axios");
 const sendEmail = require("../services/emailService");
 const UAparser = require("ua-parser-js");
+const { escapeHtml } = require("../services/emailTemplates");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
@@ -42,11 +43,13 @@ authRouter.post("/signup", async (req, res) => {
         await sendEmail({
             to: savedUser.email,
             subject: "Verify your DevSync account",
+            preheader: "Confirm your email address to finish setting up your account.",
             html:
                 `
-            <h2>Welcome to DevSync, ${savedUser.firstName}</h2>
-            <p>Please verify your email.</p>
-            <a href="${verifyLink}">Verify Email</a>
+            <h2 style="margin:0 0 8px;">Welcome to DevSync, ${escapeHtml(savedUser.firstName)}</h2>
+            <p style="margin:0 0 12px;">Please confirm your email address to activate your account.</p>
+            <p style="margin:0 0 12px;"><a href="${verifyLink}">${verifyLink}</a></p>
+            <p style="margin:0;">If you didn’t create this account, you can ignore this email.</p>
             `
         })
 
@@ -126,11 +129,13 @@ authRouter.post("/resend-verification", async (req, res) => {
     await sendEmail({
         to: user.email,
         subject: "Verify your DevSync account",
+        preheader: "Your new verification link is inside.",
         html:
             `
-            <h2>Welcome to DevSync, ${user.firstName}</h2>
-            <p>Please verify your email.</p>
-            <a href="${verifyLink}">Verify Email</a>
+            <h2 style="margin:0 0 8px;">Hi ${escapeHtml(user.firstName)},</h2>
+            <p style="margin:0 0 12px;">Here’s your new email verification link:</p>
+            <p style="margin:0 0 12px;"><a href="${verifyLink}">${verifyLink}</a></p>
+            <p style="margin:0;">If you didn’t request this, you can ignore this email.</p>
             `
     })
 
@@ -191,16 +196,16 @@ authRouter.post("/login", async (req, res) => {
             await sendEmail({
                 to: user.email,
                 subject: "New login detected on DevSync",
+                                preheader: "We noticed a login from a new device.",
                 html: `
-    <h3>New Login Detected</h3>
-
-    <p>A new login to your DevSync account was detected.</p>
-
-    <b>Device:</b> ${deviceName} <br/>
-    <b>IP:</b> ${ip} <br/>
-    <b>Time:</b> ${new Date().toLocaleString()} <br/>
-
-    <p>If this wasn't you, please reset your password.</p>
+        <h3 style="margin:0 0 8px;">New login detected</h3>
+        <p style="margin:0 0 12px;">We noticed a login to your DevSync account from a new device.</p>
+        <div style="margin:0 0 12px;">
+            <div><b>Device:</b> ${escapeHtml(deviceName)}</div>
+            <div><b>IP:</b> ${escapeHtml(ip)}</div>
+            <div><b>Time:</b> ${escapeHtml(new Date().toLocaleString())}</div>
+        </div>
+        <p style="margin:0;">If this wasn’t you, please reset your password immediately.</p>
     `
             });
 
@@ -260,7 +265,13 @@ authRouter.post("/forgot-password", async (req, res) => {
     await sendEmail({
         to: user.email,
         subject: "Reset your DevSync password",
-        html: `<a href="${resetLink}">Reset Password</a>`
+                preheader: "Use this link to reset your password (valid for 1 hour).",
+                html: `
+                    <p style="margin:0 0 12px;">We received a request to reset your DevSync password.</p>
+                    <p style="margin:0 0 12px;">Reset your password using this link (valid for 1 hour):</p>
+                    <p style="margin:0 0 12px;"><a href="${resetLink}">${resetLink}</a></p>
+                    <p style="margin:0;">If you didn’t request this, you can safely ignore this email.</p>
+                `
     });
 
     res.json({ message: "If the account exists, a reset email has been sent" });

@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { wrapEmail } = require("./emailTemplates");
 
 
 const transporter = nodemailer.createTransport({
@@ -11,12 +12,12 @@ const transporter = nodemailer.createTransport({
     }
 });
 
-const sendEmail = async ({ to, subject, html }) => {
+const sendEmail = async ({ to, subject, html, preheader }) => {
     await transporter.sendMail({
         from: `DevSync <${process.env.EMAIL_FROM}>`,
         to,
         subject,
-        html
+        html: wrapEmail({ subject, preheader, contentHtml: html })
     });
 };
 module.exports = sendEmail;

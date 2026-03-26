@@ -3,6 +3,8 @@ const Like = require("../models/Like")
 const Comment = require("../models/Comment")
 const cloudinary = require("../integrations/cloudinary");
 const fs = require('fs');const config = require("../config/index")
+const logger = require("../utils/logger")
+const AppError = require("../utils/AppError")
 
 
 exports.uploadVideo = async (req, res, next) => {
@@ -42,7 +44,7 @@ exports.addView = async (req, res, next) => {
             { new: true }
         );
 
-        if (!video) return res.status(404).json({ message: "Video not found" });
+        if (!video) return next(new AppError("Video not found", 404));
 
         res.json(video);
     } catch (error) {
@@ -56,7 +58,7 @@ exports.toggleLike = async (req, res, next) => {
         const userId = req.user._id;
 
         if (!userId || !videoId) {
-            return res.status(400).json({ message: "userId and videoId are required" });
+            return next(new AppError("userId and videoId are required", 400));
         }
 
         const existing = await Like.findOne({ userId, videoId });
@@ -86,7 +88,7 @@ exports.addComment = async (req, res, next) => {
         const userId = req.user._id;
 
         if (!userId || !videoId || !text) {
-            return res.status(400).json({ message: "userId, videoId and text are required" });
+            return next(new AppError("userId, videoId and text are required", 400));
         }
 
         const comment = await Comment.create({
@@ -110,7 +112,7 @@ exports.getComments = async (req, res, next) => {
         const { videoId } = req.params;
 
         if (!videoId) {
-            return res.status(400).json({ message: "videoId is required" });
+            return next(new AppError("videoId is required", 400));
         }
 
         const comments = await Comment.find({ videoId })
@@ -158,17 +160,17 @@ exports.deleteVideo = async (req, res, next) => {
         const userId = req.user._id;
 
         if (!videoId) {
-            return res.status(400).json({ message: "Video ID is required" });
+            return next(new AppError("Video ID is required", 400));
         }
 
         const video = await Video.findById(videoId);
 
         if (!video) {
-            return res.status(404).json({ message: "Video not found" });
+            return next(new AppError("Video not found", 404));
         }
 
         if (video.userId.toString() !== userId.toString()) {
-            return res.status(403).json({ message: "You can only delete your own videos" });
+            return next(new AppError("You can only delete your own videos", 403));
         }
 
         const videoPublicId = video.videoUrl.split('/').pop().split('.')[0];
@@ -179,7 +181,7 @@ exports.deleteVideo = async (req, res, next) => {
             await cloudinary.uploader.destroy(`reels/${videoPublicId}`, { resource_type: "video" });
             await cloudinary.uploader.destroy(`reels/${thumbnailPublicId}`, { resource_type: "image" });
         } catch (cloudinaryError) {
-            console.error("Error deleting from Cloudinary:", cloudinaryError);
+            logger.warn("Error deleting from Cloudinary", { error: cloudinaryError?.message || cloudinaryError });
         }
 
         await Like.deleteMany({ videoId });

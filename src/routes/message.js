@@ -17,7 +17,7 @@ messageRouter.get("/messages/:chatId", userAuth, async (req, res, next) => {
 
         const chat = await Chat.findOne({ _id: chatId, participants: userId });
         if (!chat) {
-            return res.status(403).json({ message: "Not allowed" });
+            return next(new AppError("Not allowed", 403));
         }
 
         const messages = await Message.find({ chatId })
@@ -37,15 +37,15 @@ messageRouter.post("/send/message", userAuth, async (req, res, next) => {
         const senderId = req.user._id;
 
         if (!chatId) {
-            return res.status(400).json({ message: "chatId is required" });
+            return next(new AppError("chatId is required", 400));
         }
         if (!text) {
-            return res.status(400).json({ message: "Message is required" });
+            return next(new AppError("Message is required", 400));
         }
 
         const chat = await Chat.findOne({ _id: chatId, participants: senderId });
         if (!chat) {
-            return res.status(403).json({ message: "Not allowed" });
+            return next(new AppError("Not allowed", 403));
         }
 
         const message = await Message.create({
@@ -76,7 +76,7 @@ messageRouter.put("/edit/message/:messageId", userAuth, async (req, res, next) =
         const { text } = req.body;
 
         if (!text) {
-            return res.status(400).json({ message: "Message is required" });
+            return next(new AppError("Message is required", 400));
         }
 
         const message = await Message.findOneAndUpdate(
@@ -86,7 +86,7 @@ messageRouter.put("/edit/message/:messageId", userAuth, async (req, res, next) =
         );
 
         if (!message) {
-            return res.status(403).json({ message: "Not allowed" });
+            return next(new AppError("Not allowed", 403));
         }
 
         res.json({ message });
@@ -106,7 +106,7 @@ messageRouter.delete("/delete/message/:messageId", userAuth, async (req, res, ne
         );
 
         if (!message) {
-            return res.status(403).json({ message: "Not allowed" });
+            return next(new AppError("Not allowed", 403));
         }
 
         res.json({ message });

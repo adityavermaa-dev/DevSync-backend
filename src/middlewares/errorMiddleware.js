@@ -1,5 +1,6 @@
 const config = require("../config/index")
 const AppError = require("../utils/AppError")
+const logger = require("../utils/logger")
 
 const errorHandler = (err,req,res,next) => {
     if (res.headersSent) {
@@ -52,6 +53,18 @@ const errorHandler = (err,req,res,next) => {
 
     const statusCode = normalizedError.statusCode || 500;
     const message = normalizedError.message || "Internal Server Error";
+
+    const logMeta = {
+        statusCode,
+        method: req.method,
+        path: req.originalUrl,
+    };
+
+    if (statusCode >= 500) {
+        logger.error(message, { ...logMeta, error: normalizedError });
+    } else {
+        logger.warn(message, { ...logMeta });
+    }
 
     res.status(statusCode).json({
         success: false,

@@ -11,6 +11,7 @@ const UAparser = require("ua-parser-js");
 const { escapeHtml } = require("../services/emailTemplates");
 const config = require('../config/index')
 const AppError = require("../utils/AppError");
+const logger = require("../utils/logger");
 
 const client = new OAuth2Client(config.oauth.googleClientId);
 
@@ -98,49 +99,55 @@ authRouter.get("/verify-email/:token", async (req, res) => {
     }
 });
 
-authRouter.post("/resend-verification", async (req, res) => {
-    const user = await User.findOne({
-        email: req.body.email.toLowerCase()
-    });
+authRouter.post("/resend-verification", async (req, res, next) => {
+    try {
+        const email = req.body.email?.toLowerCase();
+        if (!email || !validator.isEmail(email)) {
+            return next(new AppError("Invalid email", 400));
+        }
 
-    if (!user) {
-        return res.status(404).json({ message: "User not found" });
-    }
+        const user = await User.findOne({ email });
 
-    if (user.isVerified) {
-        return res.json({ message: "Already verified" });
-    }
+        if (!user) {
+            return next(new AppError("User not found", 404));
+        }
 
-    if (user.verificationTokenExpires > Date.now() - 120000) {
-        return res.status(429).json({
-            message: "Please wait before requesting another email"
-        });
-    }
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-    
-    user.verificationToken = hashedToken;
-    user.verificationTokenExpires = Date.now() + 3600000;
+        if (user.isVerified) {
+            return res.json({ message: "Already verified" });
+        }
 
-    await user.save();
+        if (user.verificationTokenExpires > Date.now() - 120000) {
+            return next(new AppError("Please wait before requesting another email", 429));
+        }
 
-    const verifyLink =
-        `${config.general.backendUrl}/verify-email/${rawToken}`;
+        const rawToken = crypto.randomBytes(32).toString("hex");
+        const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
 
-    await sendEmail({
-        to: user.email,
-        subject: "Verify your DevSync account",
-        preheader: "Your new verification link is inside.",
-        html:
-            `
+        user.verificationToken = hashedToken;
+        user.verificationTokenExpires = Date.now() + 3600000;
+
+        await user.save();
+
+        const verifyLink =
+            `${config.general.backendUrl}/verify-email/${rawToken}`;
+
+        await sendEmail({
+            to: user.email,
+            subject: "Verify your DevSync account",
+            preheader: "Your new verification link is inside.",
+            html:
+                `
             <h2 style="margin:0 0 8px;">Hi ${escapeHtml(user.firstName)},</h2>
             <p style="margin:0 0 12px;">Here’s your new email verification link:</p>
             <p style="margin:0 0 12px;"><a href="${verifyLink}">${verifyLink}</a></p>
             <p style="margin:0;">If you didn’t request this, you can ignore this email.</p>
             `
-    })
+        })
 
-    res.json({ message: "Email sent" })
+        res.json({ message: "Email sent" })
+    } catch (error) {
+        next(error);
+    }
 })
 
 authRouter.post("/login", async (req, res, next) => {
@@ -148,25 +155,25 @@ authRouter.post("/login", async (req, res, next) => {
         const { email, password } = req.body;
 
         if (!email || !validator.isEmail(email)) {
-            return res.status(400).json({ message: "Invalid email" });
+            return next(new AppError("Invalid email", 400));
         }
         if (!password) {
-            return res.status(400).json({ message: "Password required" });
+            return next(new AppError("Password required", 400));
         }
 
         const user = await User.findOne({ email: email.toLowerCase() })
             .select("+password");
 
         if (!user) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            return next(new AppError("Invalid credentials", 401));
         }
         if (!user.isVerified && user.authProvider === "local") {
-            return res.status(403).json({ message: "Please verify your email first" });
+            return next(new AppError("Please verify your email first", 403));
         }
 
         const isValid = await user.validateUser(password);
         if (!isValid) {
-            return res.status(401).json({ message: "Invalid credentials" });
+            return next(new AppError("Invalid credentials", 401));
         }
 
         const token = user.getJWT();
@@ -227,78 +234,84 @@ authRouter.post("/login", async (req, res, next) => {
             });
 
     } catch (error) {
-        console.error("Login error:", error);
+        logger.error("Login error", { error: error?.message || error });
         next(new AppError("Server error", 500));
     }
 });
 
-authRouter.post("/forgot-password", async (req, res) => {
-    const frontendUrl = config.general.frontendUrl?.trim();
-    if (!frontendUrl) {
-        return res.status(500).json({
-            message: "FRONTEND_URL is not configured on the server"
-        });
-    }
+authRouter.post("/forgot-password", async (req, res, next) => {
+    try {
+        const frontendUrl = config.general.frontendUrl?.trim();
+        if (!frontendUrl) {
+            return next(new AppError("FRONTEND_URL is not configured on the server", 500));
+        }
 
-    const email = req.body.email?.toLowerCase();
-    
-    if (!email || !validator.isEmail(email)) {
-        return res.status(400).json({ message: "Invalid email" });
-    }
+        const email = req.body.email?.toLowerCase();
 
-    const user = await User.findOne({ email });
+        if (!email || !validator.isEmail(email)) {
+            return next(new AppError("Invalid email", 400));
+        }
 
-    if (!user) {
-        return res.json({ message: "If the account exists, a reset email has been sent" });
-    }
+        const user = await User.findOne({ email });
 
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-    
-    user.passwordResetToken = hashedToken;
-    user.passwordResetTokenExpires = Date.now() + 3600000;
+        if (!user) {
+            return res.json({ message: "If the account exists, a reset email has been sent" });
+        }
 
-    await user.save();
+        const rawToken = crypto.randomBytes(32).toString("hex");
+        const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
 
-    const resetLink =
-        `${frontendUrl.replace(/\/$/, "")}/reset-password/${rawToken}`;
+        user.passwordResetToken = hashedToken;
+        user.passwordResetTokenExpires = Date.now() + 3600000;
 
-    await sendEmail({
-        to: user.email,
-        subject: "Reset your DevSync password",
-                preheader: "Use this link to reset your password (valid for 1 hour).",
-                html: `
+        await user.save();
+
+        const resetLink =
+            `${frontendUrl.replace(/\/$/, "")}/reset-password/${rawToken}`;
+
+        await sendEmail({
+            to: user.email,
+            subject: "Reset your DevSync password",
+            preheader: "Use this link to reset your password (valid for 1 hour).",
+            html: `
                     <p style="margin:0 0 12px;">We received a request to reset your DevSync password.</p>
                     <p style="margin:0 0 12px;">Reset your password using this link (valid for 1 hour):</p>
                     <p style="margin:0 0 12px;"><a href="${resetLink}">${resetLink}</a></p>
                     <p style="margin:0;">If you didn’t request this, you can safely ignore this email.</p>
                 `
-    });
+        });
 
-    res.json({ message: "If the account exists, a reset email has been sent" });
+        res.json({ message: "If the account exists, a reset email has been sent" });
+    } catch (error) {
+        next(error);
+    }
 })
 
-authRouter.post("/reset-password/:token", async (req, res) => {
-    const hashedToken = crypto.createHash("sha256").update(req.params.token).digest("hex");
+authRouter.post("/reset-password/:token", async (req, res, next) => {
+    try {
+        const hashedToken = crypto.createHash("sha256").update(req.params.token).digest("hex");
 
-    const user = await User.findOne({
-        passwordResetToken: hashedToken,
-        passwordResetTokenExpires: { $gt: Date.now() }
-    });
+        const user = await User.findOne({
+            passwordResetToken: hashedToken,
+            passwordResetTokenExpires: { $gt: Date.now() }
+        });
 
-    if (!user) {
-        return res.status(400).json({ message: "Invalid or expired token" })
+        if (!user) {
+            return next(new AppError("Invalid or expired token", 400));
+        }
+
+        const hashed = await bcrypt.hash(req.body.password, 10);
+
+        user.password = hashed
+        user.passwordResetToken = undefined
+        user.passwordResetTokenExpires = undefined
+
+        await user.save()
+
+        res.json({ message: "Password reset successfully" })
+    } catch (error) {
+        next(error);
     }
-
-    const hashed = await bcrypt.hash(req.body.password, 10);
-
-    user.password = hashed
-    user.passwordResetToken = undefined
-    user.passwordResetTokenExpires = undefined
-
-    await user.save()
-
-    res.json({ message: "Password reset successfully" })
 })
 
 authRouter.post("/auth/google/callback", async (req, res, next) => {
@@ -360,7 +373,7 @@ authRouter.get("/auth/github/callback", async (req, res, next) => {
         const { code } = req.query;
 
         if (!code) {
-            return res.status(400).json({ message: "Code not provides" })
+            return next(new AppError("Code not provides", 400));
         }
 
         const tokenResponse = await axios.post(
@@ -394,7 +407,7 @@ authRouter.get("/auth/github/callback", async (req, res, next) => {
         )?.email;
 
         if (!primaryEmail) {
-            return res.status(400).json({ message: "No verified email found" })
+            return next(new AppError("No verified email found", 400));
         }
 
         let user = await User.findOne({ email: primaryEmail })
@@ -423,7 +436,7 @@ authRouter.get("/auth/github/callback", async (req, res, next) => {
             .redirect("https://devsyncapp.in")
 
     } catch (error) {
-        console.error(error);
+        logger.error("GitHub authentication failed", { error: error?.message || error });
         next(new AppError("GitHub authentication failed", 500));
     }
 })

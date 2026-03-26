@@ -3,6 +3,7 @@ const Chat = require("../models/chat");
 const jwt = require("jsonwebtoken");
 const Message = require("../models/message");
 const config = require("../config/index")
+const logger = require("../utils/logger");
 
 let ioInstance = null;
 
@@ -34,7 +35,7 @@ const initializeSocket = (server) => {
             }
 
             if (!token) {
-                console.log("❌ Socket Auth Failed: Token missing in handshake & cookies");
+                logger.warn("Socket auth failed: token missing");
                 return next(new Error("Authentication error: Token missing"));
             }
 
@@ -42,7 +43,7 @@ const initializeSocket = (server) => {
             socketClient.user = user;
             next();
         } catch (error) {
-            console.log("❌ Socket Auth Failed:", error.message);
+            logger.warn("Socket auth failed", { error: error?.message || error });
             next(new Error("Authentication error"));
         }
     });
@@ -81,7 +82,7 @@ const initializeSocket = (server) => {
 
                 io.to(chatId).emit("messageReceived", message);
             } catch (error) {
-                console.log(error.message);
+                logger.error("Socket sendMessage failed", { error: error?.message || error });
             }
         });
 

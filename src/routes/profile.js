@@ -7,6 +7,7 @@ const cloudinary = require("cloudinary").v2;
 const multer = require("multer")
 const fs = require("fs");
 const AppError = require("../utils/AppError");
+const logger = require("../utils/logger");
 
 const uploadDir = './uploads/';
 if (!fs.existsSync(uploadDir)) {
@@ -37,7 +38,7 @@ const handleProfileImageUpload = async (req, res, next) => {
         try {
             fs.unlinkSync(file.path);
         } catch (e) {
-            console.error("Error deleting local file:", e);
+            logger.warn("Error deleting local file", { error: e?.message || e });
         }
 
         req.body.photoUrl = uploadRes.secure_url;
@@ -50,7 +51,7 @@ const handleProfileImageUpload = async (req, res, next) => {
 profileRouter.get("/profile/view", userAuth, async (req, res, next) => {
     try {
         const user = req.user;
-        console.log(user);
+        logger.debug("Profile view", { userId: user?._id });
         res.send(user);
     } catch (error) {
         next(new AppError(error.message, 400));

@@ -10,6 +10,7 @@ const server = http.createServer(app);
 const config = require("./config/index")
 const errorHandler = require("./middlewares/errorMiddleware")
 const AppError = require("./utils/AppError")
+const logger = require("./utils/logger")
 
 const allowedOrigins = [
     "http://localhost:5173",
@@ -80,12 +81,12 @@ app.use((req, res, next) => {
 app.use(errorHandler)
 connectDb()
     .then(() => {
-        console.log("Database connection successful")
+        logger.info("Database connection successful")
         server.listen(config.port, () => {
-            console.log("Server listens");
+            logger.info("Server listens", { port: config.port });
         });
     })
-    .catch((error) => console.log("database cannot be connected", error))
+    .catch((error) => logger.error("Database cannot be connected", { error }))
 
 
 /*Some important notes

@@ -5,6 +5,7 @@ const ConnectionRequest = require("../models/connectionRequest");
 const sendEmail = require("../services/emailService");
 const { escapeHtml, button } = require("../services/emailTemplates");
 const config = require("../config/index");
+const logger = require("./logger");
 
 const CRON_TIMEZONE = process.env.CRON_TIMEZONE;
 
@@ -24,7 +25,7 @@ cron.schedule(
 	async () => {
 		try {
 			if (mongoose.connection.readyState !== 1) {
-				console.warn("[cron] DB not connected; skipping daily request digest");
+				logger.warn("[cron] DB not connected; skipping daily request digest");
 				return;
 			}
 
@@ -87,11 +88,16 @@ cron.schedule(
 						html,
 					});
 				} catch (error) {
-					console.error("[cron] Failed to send digest to", to, error?.message || error);
+					logger.error("[cron] Failed to send digest", {
+						to,
+						error: error?.message || error,
+					});
 				}
 			}
 		} catch (error) {
-			console.error("[cron] Daily request digest failed:", error?.message || error);
+			logger.error("[cron] Daily request digest failed", {
+				error: error?.message || error,
+			});
 		}
 	},
 	CRON_TIMEZONE ? { timezone: CRON_TIMEZONE } : undefined

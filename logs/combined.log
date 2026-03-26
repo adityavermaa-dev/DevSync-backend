@@ -1,0 +1,6 @@
+{"level":"info","message":"Database connection successful","timestamp":"2026-03-26T13:51:47.702Z"}
+{"level":"info","message":"Server listens","port":"9999","timestamp":"2026-03-26T13:51:47.712Z"}
+{"level":"warn","message":"Cannot find /this-route-should-404 on this server","method":"GET","path":"/this-route-should-404","statusCode":404,"timestamp":"2026-03-26T13:54:05.835Z"}
+{"level":"info","message":"Database connection successful","timestamp":"2026-03-26T14:00:37.010Z"}
+{"level":"info","message":"Server listens","port":"9999","timestamp":"2026-03-26T14:00:37.014Z"}
+{"level":"warn","message":"Unauthorized","method":"GET","path":"/messages/does-not-exist","statusCode":401,"timestamp":"2026-03-26T14:01:11.022Z"}

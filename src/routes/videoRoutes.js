@@ -36,4 +36,8 @@ videoRouter.get("/comments/:videoId", userAuth, videoController.getComments);
 
 videoRouter.get("/feed", userAuth, videoController.getFeed);
 
+videoRouter.get("/my-videos", userAuth, videoController.getMyVideos);
+
+videoRouter.get("/liked-videos", userAuth, videoController.getLikedVideos);
+
 module.exports = videoRouter;

@@ -194,3 +194,58 @@ exports.deleteVideo = async (req, res, next) => {
         next(error);
     }
 };
+
+exports.getMyVideos = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+
+        const videos = await Video.find({ userId })
+            .populate("userId", "firstName lastName photoUrl")
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Check if liked
+        const videoIds = videos.map(v => v._id);
+        const userLikes = await Like.find({
+            userId: userId,
+            videoId: { $in: videoIds }
+        });
+
+        const likedVideoIds = new Set(userLikes.map(like => like.videoId.toString()));
+
+        const videosWithLikedStatus = videos.map(video => ({
+            ...video,
+            isLiked: likedVideoIds.has(video._id.toString())
+        }));
+
+        res.json(videosWithLikedStatus);
+    } catch (error) {
+        next(error);
+    }
+};
+
+exports.getLikedVideos = async (req, res, next) => {
+    try {
+        const userId = req.user._id;
+
+        const userLikes = await Like.find({ userId }).populate({
+            path: 'videoId',
+            populate: {
+                path: 'userId',
+                select: 'firstName lastName photoUrl'
+            }
+        }).sort({ createdAt: -1 }).lean();
+
+        const likedVideos = userLikes
+            .map(like => like.videoId)
+            .filter(video => video != null) // in case video was deleted
+            .map(video => ({
+                ...video,
+                isLiked: true // since these are liked videos
+            }));
+
+        res.json(likedVideos);
+    } catch (error) {
+        next(error);
+    }
+};

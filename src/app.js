@@ -13,10 +13,43 @@ const AppError = require("./utils/AppError")
 const logger = require("./utils/logger")
 const requestLogger = require("./middlewares/requestLogger")
 
+const normalizeOrigin = (origin) => {
+    if (!origin) return origin;
+    try {
+        const url = new URL(origin);
+        return `${url.protocol}//${url.host}`;
+    } catch {
+        return origin;
+    }
+};
+
+const isDevLocalOrigin = (origin) => {
+    try {
+        const url = new URL(origin);
+        const host = url.hostname;
+        return (
+            (url.protocol === "http:" || url.protocol === "https:") &&
+            (host === "localhost" || host === "127.0.0.1" || host === "::1")
+        );
+    } catch {
+        return false;
+    }
+};
+
+const configuredFrontendOrigins = String(config.general.frontendUrl || "")
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .map(normalizeOrigin);
+
 const allowedOrigins = [
     "http://localhost:5173",
-    config.general.frontendUrl,
-].filter(Boolean); 
+    ...configuredFrontendOrigins,
+]
+    .filter(Boolean)
+    .map(normalizeOrigin);
+
+const allowedOriginSet = new Set(allowedOrigins);
 
 app.use(helmet());
 
@@ -35,13 +68,28 @@ app.use(cookieParser())
 
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
+        const normalizedOrigin = normalizeOrigin(origin);
+        const isProd = config.deployment.nodeEnv === "production";
+
+        if (!normalizedOrigin) {
+            callback(null, true);
+            return;
+        }
+
+        if (!isProd && isDevLocalOrigin(normalizedOrigin)) {
+            callback(null, true);
+            return;
+        }
+
+        if (allowedOriginSet.has(normalizedOrigin)) {
             callback(null, true);
         } else {
+            logger.warn("CORS blocked request", { origin: normalizedOrigin });
             callback(new AppError("Not allowed by CORS", 403));
         }
     },
-    credentials: true
+    credentials: true,
+    optionsSuccessStatus: 204,
 }))
 
 app.use(requestLogger);

@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const Message = require("../models/message");
 const config = require("../config/index")
 const logger = require("../utils/logger");
+const { parseConfiguredOrigins } = require("../utils/origin");
 
 let ioInstance = null;
 
@@ -53,10 +54,10 @@ const removeOnlineSocket = (socketId) => {
 };
 
 const initializeSocket = (server) => {
-    const allowedOrigins = [
+    const allowedOrigins = parseConfiguredOrigins(
         "http://localhost:5173",
-        config.general.frontendUrl,
-    ].filter(Boolean);
+        config.general.frontendUrl
+    );
 
     const io = socket(server, {
         cors: {

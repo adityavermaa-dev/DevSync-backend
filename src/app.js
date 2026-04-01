@@ -12,42 +12,16 @@ const errorHandler = require("./middlewares/errorMiddleware")
 const AppError = require("./utils/AppError")
 const logger = require("./utils/logger")
 const requestLogger = require("./middlewares/requestLogger")
+const {
+    normalizeOrigin,
+    isDevLocalOrigin,
+    parseConfiguredOrigins,
+} = require("./utils/origin");
 
-const normalizeOrigin = (origin) => {
-    if (!origin) return origin;
-    try {
-        const url = new URL(origin);
-        return `${url.protocol}//${url.host}`;
-    } catch {
-        return origin;
-    }
-};
-
-const isDevLocalOrigin = (origin) => {
-    try {
-        const url = new URL(origin);
-        const host = url.hostname;
-        return (
-            (url.protocol === "http:" || url.protocol === "https:") &&
-            (host === "localhost" || host === "127.0.0.1" || host === "::1")
-        );
-    } catch {
-        return false;
-    }
-};
-
-const configuredFrontendOrigins = String(config.general.frontendUrl || "")
-    .split(",")
-    .map((v) => v.trim())
-    .filter(Boolean)
-    .map(normalizeOrigin);
-
-const allowedOrigins = [
+const allowedOrigins = parseConfiguredOrigins(
     "http://localhost:5173",
-    ...configuredFrontendOrigins,
-]
-    .filter(Boolean)
-    .map(normalizeOrigin);
+    config.general.frontendUrl
+);
 
 const allowedOriginSet = new Set(allowedOrigins);
 
@@ -121,21 +95,32 @@ app.use("/login", limiter);
 app.use("/signup", limiter);
 app.use("/forgot-password", limiter);
 app.use("/resend-verification", limiter);
+app.use("/api/setup", limiter);
+app.use("/api/login", limiter);
+app.use("/api/signup", limiter);
+app.use("/api/forgot-password", limiter);
+app.use("/api/resend-verification", limiter);
 
+const routers = [
+    authRouter,
+    profileRouter,
+    requestRouter,
+    userRouter,
+    chatRouter,
+    messageRouter,
+    paymentRouter,
+    videoRouter,
+    notificationRouter,
+    projectRouter,
+    taskRouter,
+    buildLogRouter,
+    matchRouter,
+];
 
-app.use(authRouter);
-app.use(profileRouter);
-app.use(requestRouter);
-app.use(userRouter);
-app.use(chatRouter);
-app.use(messageRouter);
-app.use(paymentRouter);
-app.use(videoRouter);
-app.use(notificationRouter);
-app.use(projectRouter);
-app.use(taskRouter);
-app.use(buildLogRouter);
-app.use(matchRouter);
+routers.forEach((router) => {
+    app.use(router);
+    app.use("/api", router);
+});
 
 app.use((req, res, next) => {
     next(new AppError(`Cannot find ${req.originalUrl} on this server`, 404));

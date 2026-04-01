@@ -12,10 +12,13 @@ const { escapeHtml } = require("../services/emailTemplates");
 const config = require('../config/index')
 const AppError = require("../utils/AppError");
 const logger = require("../utils/logger");
+const { getPrimaryUrl } = require("../utils/origin");
 
 const client = new OAuth2Client(config.oauth.googleClientId);
 
 const authRouter = express.Router();
+const frontendUrl = getPrimaryUrl(config.general.frontendUrl);
+const backendUrl = getPrimaryUrl(config.general.backendUrl);
 
 
 authRouter.post("/signup", async (req, res, next) => {
@@ -41,7 +44,7 @@ authRouter.post("/signup", async (req, res, next) => {
         const savedUser = await user.save();
 
         const verifyLink =
-            `${config.general.backendUrl}/verify-email/${rawToken}`;
+            `${backendUrl}/verify-email/${rawToken}`;
 
         await sendEmail({
             to: savedUser.email,
@@ -80,7 +83,7 @@ authRouter.get("/verify-email/:token", async (req, res) => {
 
         if (!user) {
             return res.redirect(
-                `${config.general.frontendUrl}/verification-failed`
+                `${frontendUrl}/verification-failed`
             );
         }
 
@@ -91,11 +94,11 @@ authRouter.get("/verify-email/:token", async (req, res) => {
         await user.save();
 
         return res.redirect(
-            `${config.general.frontendUrl}/email-verified`
+            `${frontendUrl}/email-verified`
         );
 
     } catch (error) {
-        res.redirect(`${config.general.frontendUrl}/verification-error`);
+        res.redirect(`${frontendUrl}/verification-error`);
     }
 });
 
@@ -129,7 +132,7 @@ authRouter.post("/resend-verification", async (req, res, next) => {
         await user.save();
 
         const verifyLink =
-            `${config.general.backendUrl}/verify-email/${rawToken}`;
+            `${backendUrl}/verify-email/${rawToken}`;
 
         await sendEmail({
             to: user.email,
@@ -241,7 +244,6 @@ authRouter.post("/login", async (req, res, next) => {
 
 authRouter.post("/forgot-password", async (req, res, next) => {
     try {
-        const frontendUrl = config.general.frontendUrl?.trim();
         if (!frontendUrl) {
             return next(new AppError("FRONTEND_URL is not configured on the server", 500));
         }
@@ -433,7 +435,7 @@ authRouter.get("/auth/github/callback", async (req, res, next) => {
             sameSite: config.deployment.nodeEnv === "production" ? "none" : "lax",
             maxAge: 7 * 24 * 60 * 60 * 1000,
         })
-            .redirect("https://devsyncapp.in")
+            .redirect(frontendUrl || "/")
 
     } catch (error) {
         logger.error("GitHub authentication failed", { error: error?.message || error });

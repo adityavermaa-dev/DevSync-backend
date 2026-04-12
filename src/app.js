@@ -18,57 +18,44 @@ const {
     parseConfiguredOrigins,
 } = require("./utils/origin");
 
-const allowedOrigins = parseConfiguredOrigins(
+const allowedOrigins = [
     "https://devsyncapp.in",
     "https://www.devsyncapp.in",
-    config.general.frontendUrl
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    config.general.frontendUrl,
+].filter(Boolean).map((o) => o.trim().replace(/\/$/, ""));
+
+const allowedHosts = new Set(
+    allowedOrigins.map((o) => {
+        try { return new URL(o).host.toLowerCase(); } catch { return null; }
+    }).filter(Boolean)
 );
 
-const allowedOriginSet = new Set(allowedOrigins);
-
-app.use(helmet({
-    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-}));
-
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    message: "Too many requests from this IP, please try again after 15 minutes",
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
-app.use(express.json({ limit: '100mb' }))
-app.use(express.urlencoded({ limit: '100mb', extended: true }))
-app.use(cookieParser())
-
-
 app.use(cors({
-    origin: function (origin, callback) {
-        const normalizedOrigin = normalizeOrigin(origin);
-        const isProd = config.deployment.nodeEnv === "production";
+    origin(origin, callback) {
+        if (!origin) return callback(null, true); // same-origin/server-to-server
 
-        if (!normalizedOrigin) {
-            callback(null, true);
-            return;
+        let host = "";
+        try {
+            host = new URL(origin).host.toLowerCase();
+        } catch {
+            logger.warn("CORS invalid origin", { origin });
+            return callback(new Error("Not allowed by CORS"));
         }
 
-        if (!isProd && isDevLocalOrigin(normalizedOrigin)) {
-            callback(null, true);
-            return;
-        }
+        if (allowedHosts.has(host)) return callback(null, true);
 
-        if (allowedOriginSet.has(normalizedOrigin)) {
-            callback(null, true);
-        } else {
-            logger.warn("CORS blocked request", { origin: normalizedOrigin });
-            callback(new AppError("Not allowed by CORS", 403));
-        }
+        logger.warn("CORS blocked request", {
+            origin,
+            host,
+            allowedHosts: [...allowedHosts],
+        });
+        return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
     optionsSuccessStatus: 204,
-}))
+}));
 
 app.use(requestLogger);
 

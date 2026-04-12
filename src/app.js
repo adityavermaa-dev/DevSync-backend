@@ -19,7 +19,8 @@ const {
 } = require("./utils/origin");
 
 const allowedOrigins = parseConfiguredOrigins(
-    "http://devsyncapp.in", "http://www.devsyncapp.in",
+    "https://devsyncapp.in",
+    "https://www.devsyncapp.in",
     config.general.frontendUrl
 );
 

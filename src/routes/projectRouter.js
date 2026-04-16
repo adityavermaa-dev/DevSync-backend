@@ -3,6 +3,7 @@ const { userAuth } = require('../middlewares/auth');
 const Project = require('../models/project');
 const Chat = require('../models/chat');
 const User = require('../models/user');
+const { trackUserActivity } = require('../services/gamificationService');
 
 const projectRouter = express.Router();
 
@@ -52,6 +53,8 @@ projectRouter.post('/project', userAuth, async (req, res) => {
       projectId: savedProject._id
     });
     await chat.save();
+
+    await trackUserActivity(req.user._id);
 
     res.status(201).json(savedProject);
   } catch (error) {

@@ -1,6 +1,7 @@
 const express = require('express');
 const { userAuth } = require('../middlewares/auth');
 const BuildLog = require('../models/buildLog');
+const { trackUserActivity } = require('../services/gamificationService');
 
 const buildLogRouter = express.Router();
 
@@ -31,6 +32,8 @@ buildLogRouter.post('/build-logs', userAuth, async (req, res) => {
     });
     
     await newLog.save();
+
+    await trackUserActivity(req.user._id);
     
     // Populate before returning
     const populatedLog = await BuildLog.findById(newLog._id)

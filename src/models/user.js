@@ -77,6 +77,18 @@ const userSchema = new mongoose.Schema(
         passwordResetToken : String,
         passwordResetTokenExpires : Date,
 
+        currentStreak: {
+            type: Number,
+            default: 0,
+        },
+        longestStreak: {
+            type: Number,
+            default: 0,
+        },
+        lastActivityAt: {
+            type: Date,
+        },
+
         devices : [
             {
                 device : String,

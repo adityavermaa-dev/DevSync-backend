@@ -88,6 +88,7 @@ const projectRouter = require('./routes/projectRouter');
 const taskRouter = require('./routes/taskRouter');
 const buildLogRouter = require('./routes/buildLogRouter');
 const matchRouter = require('./routes/matchRouter');
+const gamificationRouter = require('./routes/gamification');
 
 require("./utils/cronScheduleEmail");
 
@@ -116,6 +117,7 @@ const routers = [
     taskRouter,
     buildLogRouter,
     matchRouter,
+    gamificationRouter,
 ];
 
 routers.forEach((router) => {

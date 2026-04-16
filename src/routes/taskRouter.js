@@ -2,6 +2,7 @@ const express = require('express');
 const { userAuth } = require('../middlewares/auth');
 const Task = require('../models/task');
 const Project = require('../models/project');
+const { trackUserActivity } = require('../services/gamificationService');
 
 const taskRouter = express.Router();
 
@@ -44,6 +45,8 @@ taskRouter.post('/projects/:projectId/tasks', userAuth, checkProjectMember, asyn
 
     const savedTask = await newTask.save();
     
+    await trackUserActivity(req.user._id);
+
     // Populate assignee for frontend
     await savedTask.populate('assignee', 'firstName lastName photoUrl');
     
@@ -83,6 +86,9 @@ taskRouter.patch('/projects/:projectId/tasks/:taskId', userAuth, checkProjectMem
     if (assignee !== undefined) task.assignee = assignee; // allow clearing assignee by sending null
 
     await task.save();
+    
+    await trackUserActivity(req.user._id);
+
     await task.populate('assignee', 'firstName lastName photoUrl');
     
     res.json(task);

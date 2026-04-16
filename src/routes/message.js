@@ -3,6 +3,7 @@ const Chat = require("../models/chat");
 const Message = require("../models/message");
 const { getIO } = require("../services/socket");
 const AppError = require("../utils/AppError");
+const { trackUserActivity } = require("../services/gamificationService");
 
 const express = require("express");
 
@@ -57,6 +58,8 @@ messageRouter.post("/send/message", userAuth, async (req, res, next) => {
         await Chat.findByIdAndUpdate(chatId, {
             lastMessage: message._id
         });
+
+        await trackUserActivity(req.user._id);
 
         const io = getIO();
         if (io) {

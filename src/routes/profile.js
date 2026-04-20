@@ -28,20 +28,34 @@ const profileRouter = express.Router();
 
 const handleProfileImageUpload = async (req, res, next) => {
     try {
-        const file = req.file;
-        if (!file) {
-            return next();
+        // Handle profile image upload
+        if (req.files?.profileImage?.[0]) {
+            const file = req.files.profileImage[0];
+            const uploadRes = await cloudinary.uploader.upload(file.path);
+
+            try {
+                fs.unlinkSync(file.path);
+            } catch (e) {
+                logger.warn("Error deleting local file", { error: e?.message || e });
+            }
+
+            req.body.photoUrl = uploadRes.secure_url;
         }
 
-        const uploadRes = await cloudinary.uploader.upload(file.path);
+        // Handle cover photo upload
+        if (req.files?.coverPhoto?.[0]) {
+            const file = req.files.coverPhoto[0];
+            const uploadRes = await cloudinary.uploader.upload(file.path);
 
-        try {
-            fs.unlinkSync(file.path);
-        } catch (e) {
-            logger.warn("Error deleting local file", { error: e?.message || e });
+            try {
+                fs.unlinkSync(file.path);
+            } catch (e) {
+                logger.warn("Error deleting local file", { error: e?.message || e });
+            }
+
+            req.body.coverPhotoUrl = uploadRes.secure_url;
         }
 
-        req.body.photoUrl = uploadRes.secure_url;
         next();
     } catch (error) {
         next(new AppError("Image upload failed: " + error.message, 400));
@@ -58,7 +72,10 @@ profileRouter.get("/profile/view", userAuth, async (req, res, next) => {
     }
 });
 
-profileRouter.patch("/profile/edit", userAuth, upload.single("profileImage"), handleProfileImageUpload, async (req, res, next) => {
+profileRouter.patch("/profile/edit", userAuth, upload.fields([
+    { name: "profileImage", maxCount: 1 },
+    { name: "coverPhoto", maxCount: 1 }
+]), handleProfileImageUpload, async (req, res, next) => {
     try {
         if (req.body.age) {
             req.body.age = Number(req.body.age);

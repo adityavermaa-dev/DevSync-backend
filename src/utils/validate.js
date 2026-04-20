@@ -60,6 +60,7 @@ const validateProfileEditData = (data) => {
         "age",
         "gender",
         "photoUrl",
+        "coverPhotoUrl",
         "about",
         "skills"
     ];
@@ -73,7 +74,7 @@ const validateProfileEditData = (data) => {
         throw new AppError("Invalid fields in update request", 400);
     }
 
-    const { firstName, lastName, age, gender, photoUrl, about, skills } = data;
+    const { firstName, lastName, age, gender, photoUrl, coverPhotoUrl, about, skills } = data;
 
     // First Name
     if (firstName !== undefined) {
@@ -107,8 +108,8 @@ const validateProfileEditData = (data) => {
 
     // Age
     if (age !== undefined) {
-        if (!Number.isInteger(age) || age < 1 || age > 100) {
-            throw new AppError("Age must be between 1 and 100", 400);
+        if (!Number.isInteger(age) || age < 18 || age > 100) {
+            throw new AppError("Age must be between 18 and 100", 400);
         }
     }
 
@@ -125,6 +126,13 @@ const validateProfileEditData = (data) => {
     if (photoUrl !== undefined) {
         if (!validator.isURL(photoUrl)) {
             throw new AppError("Invalid photo URL", 400);
+        }
+    }
+
+    // Cover Photo URL
+    if (coverPhotoUrl !== undefined) {
+        if (!validator.isURL(coverPhotoUrl)) {
+            throw new AppError("Invalid cover photo URL", 400);
         }
     }
 

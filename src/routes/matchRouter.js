@@ -14,8 +14,8 @@ matchRouter.get('/matches/recommendations', userAuth, async (req, res) => {
     // 1. Find matched projects (Open projects where repo tech overlap with user skills)
     // We only recommend projects the user is not already a member of or owns
     const allProjects = await Project.find({ status: 'Open' })
-      .populate('owner', 'firstName lastName photoUrl')
-      .populate('members.user', 'firstName lastName');
+      .populate('owner', 'firstName lastName photoUrl coverPhotoUrl')
+      .populate('members.user', 'firstName lastName photoUrl coverPhotoUrl');
 
     const matchedProjects = allProjects.filter(p => {
       // exclude if user is owner
@@ -32,7 +32,7 @@ matchRouter.get('/matches/recommendations', userAuth, async (req, res) => {
     }).sort((a, b) => b.matchScore - a.matchScore).slice(0, 10);
 
     // 2. Find matched developers (Users who share skills)
-    const allUsers = await User.find({ _id: { $ne: user._id } }).select('firstName lastName photoUrl skills githubUsername');
+    const allUsers = await User.find({ _id: { $ne: user._id } }).select('firstName lastName photoUrl coverPhotoUrl skills githubUsername');
     
     const matchedDevelopers = allUsers.filter(u => {
         const uSkills = u.skills || [];

@@ -130,7 +130,7 @@ exports.getFeed = async (req, res, next) => {
     try {
         const loggedInUserId = req.user._id;
 
-        const videos = await Video.find().populate("userId", "firstName lastName photoUrl")
+        const videos = await Video.find().populate("userId", "firstName lastName photoUrl coverPhotoUrl")
             .sort({ createdAt: -1 })
             .limit(20)
             .lean();
@@ -200,7 +200,7 @@ exports.getMyVideos = async (req, res, next) => {
         const userId = req.user._id;
 
         const videos = await Video.find({ userId })
-            .populate("userId", "firstName lastName photoUrl")
+            .populate("userId", "firstName lastName photoUrl coverPhotoUrl")
             .sort({ createdAt: -1 })
             .lean();
 
@@ -232,7 +232,7 @@ exports.getLikedVideos = async (req, res, next) => {
             path: 'videoId',
             populate: {
                 path: 'userId',
-                select: 'firstName lastName photoUrl'
+                select: 'firstName lastName photoUrl coverPhotoUrl'
             }
         }).sort({ createdAt: -1 }).lean();
 

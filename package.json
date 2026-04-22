@@ -22,7 +22,9 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "db:reset-seed-bots": "node src/scripts/resetAndSeedBots.js"
+    "db:reset-seed-bots": "node src/scripts/resetAndSeedBots.js",
+    "check:syntax": "node src/scripts/checkSyntax.js",
+    "test": "npm run check:syntax"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1000.0",

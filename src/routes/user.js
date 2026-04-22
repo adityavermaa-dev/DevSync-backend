@@ -4,6 +4,7 @@ const ConnectionRequest = require('../models/connectionRequest');
 const userRouter = express.Router();
 const User = require("../models/user")
 const AppError = require("../utils/AppError")
+const MAX_FEED_LIMIT = 50;
 
 userRouter.get("/user/request/received",userAuth,async(req,res,next) => {
     try {
@@ -30,12 +31,22 @@ userRouter.get("/user/connections",userAuth,async(req,res,next) => {
         .populate("fromUserId","firstName lastName age gender photoUrl coverPhotoUrl about skills")
         .populate("toUserId","firstName lastName age gender photoUrl coverPhotoUrl about skills")
 
-        const data = connections.map(row => {
-            if(row.fromUserId._id.equals(loggedInUser._id)){
-                return row.toUserId;
+        const data = connections.reduce((acc, row) => {
+            const fromUser = row.fromUserId;
+            const toUser = row.toUserId;
+
+            if (!fromUser || !toUser) {
+                return acc;
             }
-            return row.fromUserId;
-        })
+
+            if (fromUser._id.equals(loggedInUser._id)) {
+                acc.push(toUser);
+                return acc;
+            }
+
+            acc.push(fromUser);
+            return acc;
+        }, []);
 
 
         res.json({message : "Connections fetched successfully",data})
@@ -50,9 +61,21 @@ userRouter.get("/user/connections",userAuth,async(req,res,next) => {
 userRouter.get("/user/feed", userAuth, async(req,res,next) => {
     try {
         const loggedInUser = req.user;
-        const page = Number.parseInt(req.query.page, 10) || 1;
-        const limit = Number.parseInt(req.query.limit, 10) || 10;
-        const skip = (page - 1) * limit;
+        const rawPage = req.query.page ?? "1";
+        const rawLimit = req.query.limit ?? "10";
+        const page = Number.parseInt(rawPage, 10);
+        const limit = Number.parseInt(rawLimit, 10);
+
+        if (!Number.isInteger(page) || page < 1) {
+            return next(new AppError("Page must be a positive integer", 400));
+        }
+
+        if (!Number.isInteger(limit) || limit < 1) {
+            return next(new AppError("Limit must be a positive integer", 400));
+        }
+
+        const cappedLimit = Math.min(limit, MAX_FEED_LIMIT);
+        const skip = (page - 1) * cappedLimit;
 
         const connectionRequests = await ConnectionRequest.find({
             $or : [{ fromUserId : loggedInUser._id }, { toUserId : loggedInUser._id }]
@@ -72,7 +95,7 @@ userRouter.get("/user/feed", userAuth, async(req,res,next) => {
         })
             .select("firstName lastName age gender photoUrl coverPhotoUrl about skills")
             .skip(skip)
-            .limit(limit);
+            .limit(cappedLimit);
 
         res.json({
             message : "This is your feed",

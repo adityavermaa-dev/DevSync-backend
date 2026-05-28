@@ -3,7 +3,9 @@ const { userAuth } = require('../middlewares/auth');
 const Project = require('../models/project');
 const Chat = require('../models/chat');
 const User = require('../models/user');
+const Notification = require('../models/notification');
 const { trackUserActivity } = require('../services/gamificationService');
+const { getIO } = require('../services/socket');
 
 const projectRouter = express.Router();
 
@@ -39,6 +41,16 @@ const addGithubProfilesToProject = (project) => {
         }))
       : plainProject.joinRequests
   };
+};
+
+const emitNotificationToUser = (userId, notification) => {
+  const io = getIO();
+
+  if (!io || !userId) {
+    return;
+  }
+
+  io.to(`user:${userId.toString()}`).emit('notification:new', notification);
 };
 
 projectRouter.get('/projects', userAuth, async (req, res) => {
@@ -185,6 +197,27 @@ projectRouter.post('/projects/:projectId/join', userAuth, async (req, res) => {
     });
 
     await project.save();
+
+    await Notification.create({
+      recipient: project.owner,
+      sender: req.user._id,
+      type: 'projectJoinRequest',
+      title: 'New Project Join Request',
+      body: `${req.user.firstName} ${req.user.lastName || ''} wants to join ${project.title}.`.trim(),
+      relatedEntity: project._id,
+      relatedModel: null
+    });
+
+    emitNotificationToUser(project.owner, {
+      recipient: project.owner,
+      sender: req.user._id,
+      type: 'projectJoinRequest',
+      title: 'New Project Join Request',
+      body: `${req.user.firstName} ${req.user.lastName || ''} wants to join ${project.title}.`.trim(),
+      relatedEntity: project._id,
+      relatedModel: null
+    });
+
     res.json({ message: 'Join request sent successfully', project });
   } catch (error) {
     res.status(500).json({ message: 'Error sending join request', error: error.message });
@@ -222,6 +255,26 @@ projectRouter.post('/projects/:projectId/request/:requestId/respond', userAuth, 
     }
 
     await project.save();
+
+    await Notification.create({
+      recipient: request.user,
+      sender: req.user._id,
+      type: 'projectInvite',
+      title: `Project request ${action}ed`,
+      body: `Your request to join ${project.title} was ${action}ed.`,
+      relatedEntity: project._id,
+      relatedModel: null
+    });
+
+    emitNotificationToUser(request.user, {
+      recipient: request.user,
+      sender: req.user._id,
+      type: 'projectInvite',
+      title: `Project request ${action}ed`,
+      body: `Your request to join ${project.title} was ${action}ed.`,
+      relatedEntity: project._id,
+      relatedModel: null
+    });
     
     const updatedProject = await Project.findById(req.params.projectId)
       .populate('owner', 'firstName lastName photoUrl githubUsername')

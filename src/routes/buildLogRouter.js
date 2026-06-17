@@ -10,7 +10,8 @@ buildLogRouter.get('/build-logs', userAuth, async (req, res) => {
     const logs = await BuildLog.find({})
       .populate('author', 'firstName lastName photoUrl githubUsername')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(50)
+      .lean();
     res.json(logs);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching build logs', error: error.message });

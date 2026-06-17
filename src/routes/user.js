@@ -4,6 +4,8 @@ const ConnectionRequest = require('../models/connectionRequest');
 const userRouter = express.Router();
 const User = require("../models/user")
 const AppError = require("../utils/AppError")
+const { validateObjectId } = require("../middlewares/validation");
+const redisClient = require('../utils/redis');
 const MAX_FEED_LIMIT = 50;
 
 const addGithubProfile = (user) => {
@@ -22,7 +24,8 @@ const addGithubProfile = (user) => {
 const getPublicUserProfile = async (req, res, next) => {
     try {
         const user = await User.findById(req.params.userId)
-            .select("firstName lastName age gender photoUrl coverPhotoUrl about skills githubUsername githubId");
+            .select("firstName lastName age gender photoUrl coverPhotoUrl about skills githubUsername githubId")
+            .lean();
 
         if (!user) {
             return next(new AppError("User not found", 404));
@@ -40,7 +43,7 @@ userRouter.get("/user/request/received",userAuth,async(req,res,next) => {
         const connectionRequests = await ConnectionRequest.find({
             toUserId : loggedInUser._id,
             status : "interested"
-        }).populate("fromUserId","firstName lastName age gender photoUrl coverPhotoUrl about skills")
+        }).populate("fromUserId","firstName lastName age gender photoUrl coverPhotoUrl about skills").lean();
 
         res.json({message : "Fetched received requests successfully",connectionRequests});
     } catch (error) {
@@ -52,12 +55,23 @@ userRouter.get("/user/request/received",userAuth,async(req,res,next) => {
 userRouter.get("/user/connections",userAuth,async(req,res,next) => {
     try {
         const loggedInUser = req.user;
+        const cacheKey = `connections:${loggedInUser._id}`;
+        const cachedConnections = await redisClient.get(cacheKey).catch(() => null);
+
+        if (cachedConnections) {
+            return res.json({
+                message: "Connections fetched successfully (cached)",
+                data: JSON.parse(cachedConnections)
+            });
+        }
+
         const connections = await ConnectionRequest.find({
             $or:[{toUserId : loggedInUser._id},{fromUserId : loggedInUser._id}],
             status : "accepted"
         })
         .populate("fromUserId","firstName lastName age gender photoUrl coverPhotoUrl about skills")
         .populate("toUserId","firstName lastName age gender photoUrl coverPhotoUrl about skills")
+        .lean();
 
         const data = connections.reduce((acc, row) => {
             const fromUser = row.fromUserId;
@@ -76,6 +90,7 @@ userRouter.get("/user/connections",userAuth,async(req,res,next) => {
             return acc;
         }, []);
 
+        await redisClient.setEx(cacheKey, 300, JSON.stringify(data)).catch(() => {});
 
         res.json({message : "Connections fetched successfully",data})
 
@@ -105,9 +120,19 @@ userRouter.get("/user/feed", userAuth, async(req,res,next) => {
         const cappedLimit = Math.min(limit, MAX_FEED_LIMIT);
         const skip = (page - 1) * cappedLimit;
 
+        const cacheKey = `feed:${loggedInUser._id}:${page}:${cappedLimit}`;
+        const cachedFeed = await redisClient.get(cacheKey).catch(() => null);
+
+        if (cachedFeed) {
+            return res.json({
+                message: "This is your feed (cached)",
+                feed: JSON.parse(cachedFeed)
+            });
+        }
+
         const connectionRequests = await ConnectionRequest.find({
             $or : [{ fromUserId : loggedInUser._id }, { toUserId : loggedInUser._id }]
-        }).select("fromUserId toUserId");
+        }).select("fromUserId toUserId").lean();
 
         const hiddenUsersFromFeed = new Set();
         connectionRequests.forEach((request) => {
@@ -123,7 +148,10 @@ userRouter.get("/user/feed", userAuth, async(req,res,next) => {
         })
             .select("firstName lastName age gender photoUrl coverPhotoUrl about skills")
             .skip(skip)
-            .limit(cappedLimit);
+            .limit(cappedLimit)
+            .lean();
+
+        await redisClient.setEx(cacheKey, 60, JSON.stringify(feed)).catch(() => {});
 
         res.json({
             message : "This is your feed",
@@ -134,13 +162,13 @@ userRouter.get("/user/feed", userAuth, async(req,res,next) => {
     }
 });
 
-userRouter.get("/user/:userId", getPublicUserProfile);
-userRouter.get("/user/view/:userId", getPublicUserProfile);
-userRouter.get("/user/profile/:userId", getPublicUserProfile);
-userRouter.get("/user/public/:userId", getPublicUserProfile);
-userRouter.get("/users/:userId", getPublicUserProfile);
-userRouter.get("/users/view/:userId", getPublicUserProfile);
-userRouter.get("/users/profile/:userId", getPublicUserProfile);
+userRouter.get("/user/:userId", validateObjectId('userId'), getPublicUserProfile);
+userRouter.get("/user/view/:userId", validateObjectId('userId'), getPublicUserProfile);
+userRouter.get("/user/profile/:userId", validateObjectId('userId'), getPublicUserProfile);
+userRouter.get("/user/public/:userId", validateObjectId('userId'), getPublicUserProfile);
+userRouter.get("/users/:userId", validateObjectId('userId'), getPublicUserProfile);
+userRouter.get("/users/view/:userId", validateObjectId('userId'), getPublicUserProfile);
+userRouter.get("/users/profile/:userId", validateObjectId('userId'), getPublicUserProfile);
 
 module.exports = userRouter;
 

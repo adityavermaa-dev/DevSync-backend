@@ -12,7 +12,8 @@ matchRouter.get('/matches/recommendations', userAuth, async (req, res) => {
     
     const allProjects = await Project.find({ status: 'Open' })
       .populate('owner', 'firstName lastName photoUrl coverPhotoUrl')
-      .populate('members.user', 'firstName lastName photoUrl coverPhotoUrl');
+      .populate('members.user', 'firstName lastName photoUrl coverPhotoUrl')
+      .lean();
 
     const matchedProjects = allProjects.filter(p => {
       if (p.owner._id.toString() === user._id.toString()) return false;
@@ -21,17 +22,17 @@ matchRouter.get('/matches/recommendations', userAuth, async (req, res) => {
       return techStack.some(tech => userSkills.some(skill => skill.toLowerCase() === tech.toLowerCase()));
     }).map(p => {
         const score = p.techStack.filter(tech => userSkills.some(skill => skill.toLowerCase() === tech.toLowerCase())).length;
-        return { ...p.toObject(), matchScore: score };
+        return { ...p, matchScore: score };
     }).sort((a, b) => b.matchScore - a.matchScore).slice(0, 10);
 
-    const allUsers = await User.find({ _id: { $ne: user._id } }).select('firstName lastName photoUrl coverPhotoUrl skills githubUsername');
+    const allUsers = await User.find({ _id: { $ne: user._id } }).select('firstName lastName photoUrl coverPhotoUrl skills githubUsername').lean();
     
     const matchedDevelopers = allUsers.filter(u => {
         const uSkills = u.skills || [];
         return uSkills.some(tech => userSkills.some(skill => skill.toLowerCase() === tech.toLowerCase()));
     }).map(u => {
         const score = (u.skills || []).filter(tech => userSkills.some(skill => skill.toLowerCase() === tech.toLowerCase())).length;
-        return { ...u.toObject(), matchScore: score };
+        return { ...u, matchScore: score };
     }).sort((a, b) => b.matchScore - a.matchScore).slice(0, 10);
 
     res.json({

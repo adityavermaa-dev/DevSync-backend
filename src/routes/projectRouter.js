@@ -58,7 +58,8 @@ projectRouter.get('/projects', userAuth, async (req, res) => {
     const projects = await Project.find({ status: 'Open' })
       .populate('owner', 'firstName lastName photoUrl githubUsername')
       .populate('members.user', 'firstName lastName photoUrl githubUsername')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
     res.json(projects.map(addGithubProfilesToProject));
   } catch (error) {
     res.status(500).json({ message: 'Error fetching projects', error: error.message });

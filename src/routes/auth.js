@@ -1,7 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
-const { validateSignup } = require("../utils/validate");
 const User = require("../models/user");
+const { signupValidator, loginValidator } = require("../middlewares/authValidator");
 const validator = require("validator");
 const { OAuth2Client } = require("google-auth-library");
 const crypto = require("crypto");
@@ -21,9 +21,8 @@ const frontendUrl = getPrimaryUrl(config.general.frontendUrl);
 const backendUrl = getPrimaryUrl(config.general.backendUrl);
 
 
-authRouter.post("/signup", async (req, res, next) => {
+authRouter.post("/signup", signupValidator, async (req, res, next) => {
     try {
-        validateSignup(req.body);
 
         const { firstName, lastName, email, password } = req.body;
         const rawToken = crypto.randomBytes(32).toString("hex");
@@ -153,16 +152,9 @@ authRouter.post("/resend-verification", async (req, res, next) => {
     }
 })
 
-authRouter.post("/login", async (req, res, next) => {
+authRouter.post("/login", loginValidator, async (req, res, next) => {
     try {
         const { email, password } = req.body;
-
-        if (!email || !validator.isEmail(email)) {
-            return next(new AppError("Invalid email", 400));
-        }
-        if (!password) {
-            return next(new AppError("Password required", 400));
-        }
 
         const user = await User.findOne({ email: email.toLowerCase() })
             .select("+password");

@@ -354,7 +354,9 @@ authRouter.post("/auth/google/callback", async (req, res, next) => {
 })
 
 authRouter.get("/auth/github", (req, res) => {
-    const callbackUrl = `${backendUrl}/auth/github/callback`;
+    // Force the callback URL to include /api so Nginx proxies it to the backend
+    const base = backendUrl.replace(/\/api\/?$/, "");
+    const callbackUrl = `${base}/api/auth/github/callback`;
     const githubAuthURL =
         `https://github.com/login/oauth/authorize?` +
         `client_id=${config.oauth.githubClientId}&` +
@@ -365,7 +367,9 @@ authRouter.get("/auth/github", (req, res) => {
 })
 
 authRouter.get("/auth/github/url", (req, res) => {
-    const callbackUrl = `${backendUrl}/auth/github/callback`;
+    // Force the callback URL to include /api so Nginx proxies it to the backend
+    const base = backendUrl.replace(/\/api\/?$/, "");
+    const callbackUrl = `${base}/api/auth/github/callback`;
     const githubAuthURL =
         `https://github.com/login/oauth/authorize?` +
         `client_id=${config.oauth.githubClientId}&` +

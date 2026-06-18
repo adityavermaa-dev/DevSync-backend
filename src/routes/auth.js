@@ -354,18 +354,22 @@ authRouter.post("/auth/google/callback", async (req, res, next) => {
 })
 
 authRouter.get("/auth/github", (req, res) => {
+    const callbackUrl = `${backendUrl}/auth/github/callback`;
     const githubAuthURL =
         `https://github.com/login/oauth/authorize?` +
         `client_id=${config.oauth.githubClientId}&` +
+        `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
         `scope=user:email`;
 
     res.redirect(githubAuthURL);
 })
 
 authRouter.get("/auth/github/url", (req, res) => {
+    const callbackUrl = `${backendUrl}/auth/github/callback`;
     const githubAuthURL =
         `https://github.com/login/oauth/authorize?` +
         `client_id=${config.oauth.githubClientId}&` +
+        `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
         `scope=user:email`;
 
     res.json({ url: githubAuthURL });
@@ -459,7 +463,7 @@ authRouter.get("/auth/github/callback", async (req, res, next) => {
             sameSite: config.deployment.nodeEnv === "production" ? "none" : "lax",
             maxAge: 7 * 24 * 60 * 60 * 1000,
         })
-            .redirect(frontendUrl || "/")
+            .redirect(`${frontendUrl || ""}/auth/github/callback`)
 
     } catch (error) {
         logger.error("GitHub authentication failed", { error: error?.message || error });

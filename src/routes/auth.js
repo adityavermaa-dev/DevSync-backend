@@ -468,39 +468,13 @@ authRouter.get("/auth/github/callback", async (req, res, next) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
-        // Firebase-style robust popup completion: 
-        // Send a script that signals the parent window and closes the popup.
-        const html = `
-            <html>
-                <body>
-                    <p>Authentication successful. Closing window...</p>
-                    <script>
-                        if (window.opener) {
-                            window.opener.postMessage("devsync_github_auth_success", "*");
-                        }
-                        window.close();
-                    </script>
-                </body>
-            </html>
-        `;
-        res.send(html);
+        const redirectUrl = new URL(`${frontendUrl}/auth/github/callback`);
+        redirectUrl.searchParams.set("token", token);
+        res.redirect(redirectUrl.toString());
 
     } catch (error) {
         logger.error("GitHub authentication failed", { error: error?.message || error });
-        const html = `
-            <html>
-                <body>
-                    <p>Authentication failed. Closing window...</p>
-                    <script>
-                        if (window.opener) {
-                            window.opener.postMessage("devsync_github_auth_error", "*");
-                        }
-                        window.close();
-                    </script>
-                </body>
-            </html>
-        `;
-        res.status(500).send(html);
+        res.redirect(`${frontendUrl}/auth/github/callback?error=1`);
     }
 })
 

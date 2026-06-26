@@ -18,6 +18,10 @@ const {
     parseConfiguredOrigins,
 } = require("./utils/origin");
 
+if (config.deployment.nodeEnv === "production") {
+    app.set("trust proxy", 1);
+}
+
 const allowedOrigins = parseConfiguredOrigins(
     "https://devsyncapp.in",
     "https://www.devsyncapp.in",
@@ -97,11 +101,13 @@ app.use("/login", limiter);
 app.use("/signup", limiter);
 app.use("/forgot-password", limiter);
 app.use("/resend-verification", limiter);
+app.use("/auth", limiter);
 app.use("/api/setup", limiter);
 app.use("/api/login", limiter);
 app.use("/api/signup", limiter);
 app.use("/api/forgot-password", limiter);
 app.use("/api/resend-verification", limiter);
+app.use("/api/auth", limiter);
 
 const routers = [
     authRouter,

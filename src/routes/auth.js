@@ -20,6 +20,165 @@ const authRouter = express.Router();
 const frontendUrl = getPrimaryUrl(config.general.frontendUrl);
 const backendUrl = getPrimaryUrl(config.general.backendUrl);
 
+const AUTH_COOKIE_NAME = "token";
+const OAUTH_STATE_COOKIE_NAME = "devsync_oauth_state";
+const AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+const OAUTH_STATE_COOKIE_MAX_AGE = 10 * 60 * 1000;
+const isProduction = config.deployment.nodeEnv === "production";
+
+const assertAbsoluteHttpUrl = (value, name) => {
+    try {
+        const url = new URL(value);
+        if (!["http:", "https:"].includes(url.protocol)) {
+            throw new Error();
+        }
+    } catch {
+        throw new Error(`${name} must be an absolute http(s) URL`);
+    }
+};
+
+assertAbsoluteHttpUrl(frontendUrl, "FRONTEND_URL");
+assertAbsoluteHttpUrl(backendUrl, "BACKEND_URL");
+
+const joinPublicUrl = (baseUrl, routePath) => {
+    const url = new URL(baseUrl);
+    const basePath = url.pathname.replace(/\/+$/, "");
+    const normalizedRoutePath = routePath.startsWith("/") ? routePath : `/${routePath}`;
+
+    url.pathname = `${basePath}${normalizedRoutePath}`.replace(/\/{2,}/g, "/");
+    url.search = "";
+    url.hash = "";
+
+    return url.toString();
+};
+
+const getAuthCookieOptions = () => ({
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    maxAge: AUTH_COOKIE_MAX_AGE,
+    path: "/",
+});
+
+const getCookieClearOptions = () => {
+    const { maxAge, ...options } = getAuthCookieOptions();
+    return options;
+};
+
+const setAuthCookie = (res, token) => {
+    return res.cookie(AUTH_COOKIE_NAME, token, getAuthCookieOptions());
+};
+
+const getOAuthStateCookieOptions = () => ({
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    maxAge: OAUTH_STATE_COOKIE_MAX_AGE,
+    path: "/",
+});
+
+const getOAuthStateCookieClearOptions = () => {
+    const { maxAge, ...options } = getOAuthStateCookieOptions();
+    return options;
+};
+
+const hashOAuthState = (state) => {
+    return crypto
+        .createHmac("sha256", config.auth.jwtSecret)
+        .update(state)
+        .digest("hex");
+};
+
+const safeCompare = (left, right) => {
+    const leftBuffer = Buffer.from(String(left || ""));
+    const rightBuffer = Buffer.from(String(right || ""));
+
+    return (
+        leftBuffer.length === rightBuffer.length &&
+        crypto.timingSafeEqual(leftBuffer, rightBuffer)
+    );
+};
+
+const createOAuthState = () => crypto.randomBytes(32).toString("hex");
+
+const setOAuthStateCookie = (res, state) => {
+    res.cookie(OAUTH_STATE_COOKIE_NAME, hashOAuthState(state), getOAuthStateCookieOptions());
+};
+
+const clearOAuthStateCookie = (res) => {
+    res.clearCookie(OAUTH_STATE_COOKIE_NAME, getOAuthStateCookieClearOptions());
+};
+
+const isValidOAuthState = (req, receivedState) => {
+    const state = Array.isArray(receivedState) ? receivedState[0] : receivedState;
+    const expectedHash = req.cookies?.[OAUTH_STATE_COOKIE_NAME];
+
+    if (!state || !expectedHash) {
+        return false;
+    }
+
+    return safeCompare(hashOAuthState(state), expectedHash);
+};
+
+const getGithubCallbackUrl = () => {
+    const configuredCallbackUrl = getPrimaryUrl(config.oauth.githubCallbackUrl);
+    if (configuredCallbackUrl) {
+        assertAbsoluteHttpUrl(configuredCallbackUrl, "GITHUB_CALLBACK_URL");
+        return configuredCallbackUrl;
+    }
+
+    return joinPublicUrl(backendUrl, "/auth/github/callback");
+};
+
+const buildGithubAuthUrl = (state) => {
+    const githubAuthUrl = new URL("https://github.com/login/oauth/authorize");
+    githubAuthUrl.searchParams.set("client_id", config.oauth.githubClientId);
+    githubAuthUrl.searchParams.set("redirect_uri", getGithubCallbackUrl());
+    githubAuthUrl.searchParams.set("scope", "read:user user:email");
+    githubAuthUrl.searchParams.set("state", state);
+
+    return githubAuthUrl.toString();
+};
+
+const redirectToAuthCallback = (res, provider, params = {}) => {
+    const redirectUrl = new URL(joinPublicUrl(frontendUrl, `/auth/${provider}/callback`));
+
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== "") {
+            redirectUrl.searchParams.set(key, String(value));
+        }
+    });
+
+    return res.redirect(redirectUrl.toString());
+};
+
+const serializeAuthUser = (user) => ({
+    id: user._id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    photoUrl: user.photoUrl,
+    githubUsername: user.githubUsername,
+    profileCompleted: user.profileCompleted,
+});
+
+const getNameParts = (name, fallback) => {
+    const source = String(name || fallback || "DevSync User").trim();
+    const [firstName, ...rest] = source.split(/\s+/);
+
+    return {
+        firstName: firstName || "DevSync",
+        lastName: rest.join(" "),
+    };
+};
+
+const githubRequestHeaders = (accessToken) => ({
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${accessToken}`,
+    "User-Agent": "DevSync",
+    "X-GitHub-Api-Version": "2022-11-28",
+});
+
 
 authRouter.post("/signup", signupValidator, async (req, res, next) => {
     try {
@@ -165,6 +324,9 @@ authRouter.post("/login", loginValidator, async (req, res, next) => {
         if (!user.isVerified && user.authProvider === "local") {
             return next(new AppError("Please verify your email first", 403));
         }
+        if (!user.password) {
+            return next(new AppError(`Please continue with ${user.authProvider} login`, 401));
+        }
 
         const isValid = await user.validateUser(password);
         if (!isValid) {
@@ -214,19 +376,7 @@ authRouter.post("/login", loginValidator, async (req, res, next) => {
 
         }
 
-        res
-            .cookie("token", token, {
-                httpOnly: true,
-                secure: config.deployment.nodeEnv === "production",
-                sameSite:
-                    config.deployment.nodeEnv === "production" ? "none" : "lax",
-                maxAge: 7 * 24 * 60 * 60 * 1000,
-            })
-            .json({
-                id: user._id,
-                firstName: user.firstName,
-                email: user.email,
-            });
+        setAuthCookie(res, token).json(serializeAuthUser(user));
 
     } catch (error) {
         logger.error("Login error", { error: error?.message || error });
@@ -311,80 +461,116 @@ authRouter.post("/reset-password/:token", async (req, res, next) => {
 authRouter.post("/auth/google/callback", async (req, res, next) => {
     try {
         const { credential } = req.body;
+        if (!credential) {
+            return next(new AppError("Missing Google credential", 400));
+        }
 
         const ticket = await client.verifyIdToken({
             idToken: credential,
             audience: config.oauth.googleClientId,
         })
 
-        const { email, given_name, family_name, sub: googleId, picture } = ticket.getPayload();
+        const {
+            email,
+            email_verified: emailVerified,
+            given_name,
+            family_name,
+            name,
+            sub: googleId,
+            picture
+        } = ticket.getPayload();
 
-        let user = await User.findOne({ email: email });
+        const normalizedEmail = String(email || "").toLowerCase();
+        if (!normalizedEmail || !emailVerified) {
+            return next(new AppError("Google email is not verified", 400));
+        }
+
+        const googleIdString = String(googleId);
+        const existingByGoogleId = await User.findOne({ googleId: googleIdString });
+        const existingByEmail = await User.findOne({ email: normalizedEmail });
+
+        if (
+            existingByGoogleId &&
+            existingByEmail &&
+            String(existingByGoogleId._id) !== String(existingByEmail._id)
+        ) {
+            return next(new AppError("This Google account is already linked to another user", 409));
+        }
+
+        let user = existingByGoogleId || existingByEmail;
 
         if (!user) {
+            const fallbackName = normalizedEmail.split("@")[0];
             user = new User({
-                firstName: given_name,
-                lastName: family_name,
-                email: email,
-                googleId: googleId,
+                firstName: given_name || getNameParts(name, fallbackName).firstName,
+                lastName: family_name || getNameParts(name, fallbackName).lastName,
+                email: normalizedEmail,
+                googleId: googleIdString,
                 photoUrl: picture,
                 authProvider: "google",
                 isVerified: true
             })
             await user.save();
+        } else {
+            if (user.googleId && user.googleId !== googleIdString) {
+                return next(new AppError("This email is already linked to another Google account", 409));
+            }
 
+            user.googleId = googleIdString;
+            user.isVerified = true;
+
+            if (!user.photoUrl && picture) {
+                user.photoUrl = picture;
+            }
+
+            if (!user.authProvider || user.authProvider === "local") {
+                user.authProvider = "google";
+            }
+
+            await user.save();
         }
 
-        const token = await user.getJWT();
+        const token = user.getJWT();
 
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: config.deployment.nodeEnv === "production",
-            sameSite: config.deployment.nodeEnv === "production" ? "none" : "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000,
+        setAuthCookie(res, token).json({
+            message: "Login successfully",
+            data: serializeAuthUser(user)
         })
-            .json({
-                message: "Login Successfully",
-                data: user
-            })
         req.user = user;
     } catch (error) {
-        next(new AppError("Invalid Google Token", 400));
+        logger.warn("Google authentication failed", { error: error?.message || error });
+        next(error.statusCode ? error : new AppError("Invalid Google token", 400));
     }
 })
 
 authRouter.get("/auth/github", (req, res) => {
-    // Force the callback URL to include /api so Nginx proxies it to the backend
-    const base = backendUrl.replace(/\/api\/?$/, "");
-    const callbackUrl = `${base}/api/auth/github/callback`;
-    const githubAuthURL =
-        `https://github.com/login/oauth/authorize?` +
-        `client_id=${config.oauth.githubClientId}&` +
-        `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
-        `scope=user:email`;
+    const state = createOAuthState();
+    setOAuthStateCookie(res, state);
 
-    res.redirect(githubAuthURL);
+    res.redirect(buildGithubAuthUrl(state));
 })
 
 authRouter.get("/auth/github/url", (req, res) => {
-    // Force the callback URL to include /api so Nginx proxies it to the backend
-    const base = backendUrl.replace(/\/api\/?$/, "");
-    const callbackUrl = `${base}/api/auth/github/callback`;
-    const githubAuthURL =
-        `https://github.com/login/oauth/authorize?` +
-        `client_id=${config.oauth.githubClientId}&` +
-        `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
-        `scope=user:email`;
+    const state = createOAuthState();
+    setOAuthStateCookie(res, state);
 
-    res.json({ url: githubAuthURL });
+    res.json({ url: buildGithubAuthUrl(state) });
 })
 
-authRouter.get("/auth/github/callback", async (req, res, next) => {
+authRouter.get("/auth/github/callback", async (req, res) => {
     try {
-        const { code } = req.query;
+        const { code, state } = req.query;
+        const githubCallbackUrl = getGithubCallbackUrl();
+
+        clearOAuthStateCookie(res);
+
+        if (!isValidOAuthState(req, state)) {
+            logger.warn("GitHub OAuth state validation failed");
+            return redirectToAuthCallback(res, "github", { error: "oauth_state" });
+        }
 
         if (!code) {
-            return next(new AppError("Code not provides", 400));
+            return redirectToAuthCallback(res, "github", { error: "missing_code" });
         }
 
         const tokenResponse = await axios.post(
@@ -393,95 +579,113 @@ authRouter.get("/auth/github/callback", async (req, res, next) => {
                 client_id: config.oauth.githubClientId,
                 client_secret: config.oauth.githubClientSecret,
                 code,
+                redirect_uri: githubCallbackUrl,
             },
             {
-                headers: { Accept: "application/json" },
+                headers: {
+                    Accept: "application/json",
+                    "User-Agent": "DevSync",
+                },
+                timeout: 10000,
             }
         )
 
+        if (tokenResponse.data?.error) {
+            throw new AppError(tokenResponse.data.error_description || "GitHub token exchange failed", 400);
+        }
+
         const accessToken = tokenResponse.data.access_token;
+        if (!accessToken) {
+            throw new AppError("GitHub did not return an access token", 400);
+        }
 
         const userResponse = await axios.get("https://api.github.com/user", {
-            headers: {
-                Authorization: `Bearer ${accessToken}`
-            }
+            headers: githubRequestHeaders(accessToken),
+            timeout: 10000,
         })
 
         const emailResponse = await axios.get("https://api.github.com/user/emails", {
-            headers: {
-                Authorization: `Bearer ${accessToken}`
-            }
+            headers: githubRequestHeaders(accessToken),
+            timeout: 10000,
         })
 
         const primaryEmail = emailResponse.data.find(
             (email) => email.primary && email.verified
-        )?.email;
+        )?.email || emailResponse.data.find((email) => email.verified)?.email;
 
         if (!primaryEmail) {
-            return next(new AppError("No verified email found", 400));
+            throw new AppError("No verified GitHub email found", 400);
         }
 
-        let user = await User.findOne({ email: primaryEmail })
+        const normalizedEmail = primaryEmail.toLowerCase();
+        const githubId = String(userResponse.data.id);
+        const githubUsername = userResponse.data.login || "";
+
+        const existingByGithubId = await User.findOne({ githubId });
+        const existingByEmail = await User.findOne({ email: normalizedEmail });
+
+        if (
+            existingByGithubId &&
+            existingByEmail &&
+            String(existingByGithubId._id) !== String(existingByEmail._id)
+        ) {
+            throw new AppError("This GitHub email is already linked to another account", 409);
+        }
+
+        let user = existingByGithubId || existingByEmail;
 
         if (!user) {
+            const { firstName, lastName } = getNameParts(userResponse.data.name, githubUsername);
             user = new User({
-                email: primaryEmail,
-                firstName: userResponse.data.name || userResponse.data.login,
-                lastName: "",
-                githubId: userResponse.data.id,
-                githubUsername: userResponse.data.login,
+                email: normalizedEmail,
+                firstName,
+                lastName,
+                githubId,
+                githubUsername,
                 photoUrl: userResponse.data.avatar_url,
                 authProvider: "github",
                 isVerified: true
             })
             await user.save();
         } else {
-            const nextGithubId = String(userResponse.data.id);
-            const nextGithubUsername = userResponse.data.login || "";
-
-            if (!user.githubId) {
-                user.githubId = nextGithubId;
+            if (user.githubId && user.githubId !== githubId) {
+                throw new AppError("This email is already linked to another GitHub account", 409);
             }
 
-            if (!user.githubUsername && nextGithubUsername) {
-                user.githubUsername = nextGithubUsername;
-            }
+            user.githubId = githubId;
 
-            if (!user.photoUrl && userResponse.data.avatar_url) {
-                user.photoUrl = userResponse.data.avatar_url;
+            if (githubUsername) {
+                user.githubUsername = githubUsername;
             }
 
             if (!user.authProvider || user.authProvider === "local") {
                 user.authProvider = "github";
             }
 
+            if (!user.photoUrl && userResponse.data.avatar_url) {
+                user.photoUrl = userResponse.data.avatar_url;
+            }
+
             user.isVerified = true;
             await user.save();
         }
 
-        const token = await user.getJWT();
+        const token = user.getJWT();
 
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: config.deployment.nodeEnv === "production",
-            sameSite: config.deployment.nodeEnv === "production" ? "none" : "lax",
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-        });
+        setAuthCookie(res, token);
 
-        const redirectUrl = new URL(`${frontendUrl}/auth/github/callback`);
-        redirectUrl.searchParams.set("token", token);
-        res.redirect(redirectUrl.toString());
+        return redirectToAuthCallback(res, "github");
 
     } catch (error) {
         logger.error("GitHub authentication failed", { error: error?.message || error });
-        res.redirect(`${frontendUrl}/auth/github/callback?error=1`);
+        return redirectToAuthCallback(res, "github", { error: "github_oauth_failed" });
     }
 })
 
 authRouter.post("/logout", (req, res) => {
-    res.clearCookie("token");
+    res.clearCookie(AUTH_COOKIE_NAME, getCookieClearOptions());
 
-    res.send("Logout Successfully")
+    res.json({ message: "Logout successfully" })
 })
 
 module.exports = authRouter;

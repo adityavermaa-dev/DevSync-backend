@@ -28,6 +28,29 @@ const userSchema = new mongoose.Schema(
         skills: {
             type: [String],
         },
+        college: {
+            type: String,
+            trim: true,
+        },
+        graduationYear: {
+            type: String,
+            trim: true,
+        },
+        timezone: {
+            type: String,
+            trim: true,
+        },
+        interests: {
+            type: [String],
+        },
+        devSyncGoal: {
+            type: String,
+            trim: true,
+        },
+        profileCompleted: {
+            type: Boolean,
+            default: false,
+        },
         password: {
             type: String,
             required: function () {

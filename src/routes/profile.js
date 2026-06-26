@@ -116,6 +116,12 @@ profileRouter.patch("/profile/edit", userAuth, upload.fields([
             } catch (e) {
             }
         }
+        if (typeof req.body.interests === "string") {
+            try {
+                req.body.interests = JSON.parse(req.body.interests);
+            } catch (e) {
+            }
+        }
 
         validateProfileEditData(req.body);
 

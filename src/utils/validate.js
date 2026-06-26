@@ -58,7 +58,13 @@ const validateProfileEditData = (data) => {
         "photoUrl",
         "coverPhotoUrl",
         "about",
-        "skills"
+        "skills",
+        "college",
+        "graduationYear",
+        "timezone",
+        "interests",
+        "devSyncGoal",
+        "profileCompleted"
     ];
 
     const isAllowed = Object.keys(data).every((key) =>
@@ -69,7 +75,7 @@ const validateProfileEditData = (data) => {
         throw new AppError("Invalid fields in update request", 400);
     }
 
-    const { firstName, lastName, age, gender, photoUrl, coverPhotoUrl, about, skills } = data;
+    const { firstName, lastName, age, gender, photoUrl, coverPhotoUrl, about, skills, interests } = data;
 
     if (firstName !== undefined) {
         if (!firstName.trim()) {
@@ -151,6 +157,26 @@ const validateProfileEditData = (data) => {
 
             if (skill.length > 30) {
                 throw new AppError("Each skill must be under 30 characters", 400);
+            }
+        });
+    }
+
+    if (interests !== undefined) {
+        if (!Array.isArray(interests)) {
+            throw new AppError("Interests must be an array", 400);
+        }
+
+        if (interests.length > 20) {
+            throw new AppError("You can add maximum 20 interests", 400);
+        }
+
+        interests.forEach((interest) => {
+            if (typeof interest !== "string" || !interest.trim()) {
+                throw new AppError("Each interest must be a non-empty string", 400);
+            }
+
+            if (interest.length > 50) {
+                throw new AppError("Each interest must be under 50 characters", 400);
             }
         });
     }
